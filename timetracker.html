@@ -106,11 +106,13 @@
 
         function renderPeriods() {
             const tbody = document.getElementById('periodsBody');
-            // Save focus and selection for in-progress comment
-            let prevInput = document.getElementById('inProgressComment');
+            // Save focus and selection for any comment input
+            let prevInput = document.activeElement;
+            let prevId = prevInput && prevInput.classList.contains('comment-input') ? prevInput.id : null;
+            let prevDataIndex = prevInput && prevInput.classList.contains('comment-input') ? prevInput.getAttribute('data-index') : null;
             let prevSelectionStart = null, prevSelectionEnd = null;
             let wasFocused = false;
-            if (prevInput && document.activeElement === prevInput) {
+            if (prevInput && prevInput.classList.contains('comment-input')) {
                 wasFocused = true;
                 prevSelectionStart = prevInput.selectionStart;
                 prevSelectionEnd = prevInput.selectionEnd;
@@ -125,7 +127,7 @@
                     <td>${p.end ? new Date(p.end).toLocaleString() : ''}</td>
                     <td>${p.end ? formatTime(p.end - p.start) : (p.start ? formatTime(Date.now() - p.start) : '')}</td>
                     <td>
-                        <input class="comment-input" type="text" value="${p.comment || ''}" data-index="${i}" autocomplete="off" />
+                        <input class="comment-input" type="text" value="${p.comment || ''}" data-index="${i}" id="comment-input-${i}" autocomplete="off" />
                     </td>
                 `;
                 tbody.appendChild(tr);
@@ -149,24 +151,33 @@
                         window.inProgressComment = e.target.value;
                         localStorage.setItem('inProgressComment', window.inProgressComment);
                     });
-                    // Restore focus and selection if previously focused
-                    if (wasFocused) {
-                        input.focus();
-                        if (prevSelectionStart !== null && prevSelectionEnd !== null) {
-                            input.setSelectionRange(prevSelectionStart, prevSelectionEnd);
-                        }
+                }
+            }
+            // Attach change listeners for all comment inputs
+            document.querySelectorAll('.comment-input').forEach(input => {
+                if (input.id === 'inProgressComment') return;
+                input.addEventListener('change', (e) => {
+                    const idx = e.target.getAttribute('data-index');
+                    periods[idx].comment = e.target.value;
+                    savePeriods();
+                });
+            });
+            // Restore focus and selection if previously focused, but do NOT call .focus() unless the input was already focused
+            if (wasFocused) {
+                let selector = null;
+                if (prevId === 'inProgressComment') {
+                    selector = '#inProgressComment';
+                } else if (prevDataIndex !== null) {
+                    selector = `#comment-input-${prevDataIndex}`;
+                }
+                if (selector) {
+                    const input = document.querySelector(selector);
+                    if (input) {
+                        // Only set selection if the input is still in the DOM
+                        input.setSelectionRange(prevSelectionStart, prevSelectionEnd);
                     }
                 }
             }
-            document.querySelectorAll('.comment-input').forEach(input => {
-                if (input.id !== 'inProgressComment') {
-                    input.addEventListener('change', (e) => {
-                        const idx = e.target.getAttribute('data-index');
-                        periods[idx].comment = e.target.value;
-                        savePeriods();
-                    });
-                }
-            });
             setGraphUpdateInterval();
             renderWeeklyBarChart();
         }
