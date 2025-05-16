@@ -48,6 +48,11 @@
         <button id="refreshGraphBtn" style="margin-left:1em;">Refresh</button>
         <canvas id="weeklyBarChart" width="600" height="300"></canvas>
     </div>
+    <div style="margin-top:2em;">
+        <button id="exportBtn">Export Data</button>
+        <button id="importBtn">Import Data</button>
+        <input type="file" id="importFileInput" style="display:none" accept="application/json" />
+    </div>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         let timerInterval = null;
@@ -334,6 +339,69 @@
                 graphUpdateInterval = setInterval(() => renderWeeklyBarChart(), 60000);
             }
         }
+
+        // --- Export/Import logic ---
+        function exportData() {
+            const data = {
+                workPeriods: periods,
+                timerInProgress: localStorage.getItem('timerInProgress'),
+                inProgressComment: localStorage.getItem('inProgressComment')
+            };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'timetracker-data.json';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 0);
+        }
+
+        function importDataFromFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (Array.isArray(data.workPeriods)) {
+                        periods = data.workPeriods;
+                        localStorage.setItem('workPeriods', JSON.stringify(periods));
+                    }
+                    if (data.timerInProgress) {
+                        localStorage.setItem('timerInProgress', data.timerInProgress);
+                    } else {
+                        localStorage.removeItem('timerInProgress');
+                    }
+                    if (typeof data.inProgressComment === 'string') {
+                        localStorage.setItem('inProgressComment', data.inProgressComment);
+                    } else {
+                        localStorage.removeItem('inProgressComment');
+                    }
+                    loadPeriods();
+                    loadTimerState();
+                    renderPeriods();
+                    updateTimerDisplay();
+                    renderWeeklyBarChart(true);
+                    alert('Data imported successfully.');
+                } catch (err) {
+                    alert('Failed to import data: ' + err);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        document.getElementById('exportBtn').addEventListener('click', exportData);
+        document.getElementById('importBtn').addEventListener('click', function() {
+            document.getElementById('importFileInput').value = '';
+            document.getElementById('importFileInput').click();
+        });
+        document.getElementById('importFileInput').addEventListener('change', function(e) {
+            if (e.target.files && e.target.files[0]) {
+                importDataFromFile(e.target.files[0]);
+            }
+        });
 
         // Initialize
         loadPeriods();
