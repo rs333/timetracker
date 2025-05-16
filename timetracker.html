@@ -171,10 +171,18 @@
                     selector = `#comment-input-${prevDataIndex}`;
                 }
                 if (selector) {
-                    // Use requestAnimationFrame to avoid scroll jumps
                     requestAnimationFrame(() => {
                         const input = document.querySelector(selector);
                         if (input) {
+                            // Only update value if not focused, to avoid overwriting user edits
+                            if (document.activeElement !== input) {
+                                if (input.id === 'inProgressComment') {
+                                    input.value = window.inProgressComment || '';
+                                } else if (input.hasAttribute('data-index')) {
+                                    const idx = input.getAttribute('data-index');
+                                    input.value = periods[idx].comment || '';
+                                }
+                            }
                             input.focus({ preventScroll: true });
                             if (prevSelectionStart !== null && prevSelectionEnd !== null) {
                                 input.setSelectionRange(prevSelectionStart, prevSelectionEnd);
