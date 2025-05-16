@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Time Tracker</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2em; }
+        #timer { font-size: 2em; margin-bottom: 1em; }
+        #toggleBtn { font-size: 1.2em; padding: 0.5em 1.5em; }
+        #periods { margin-top: 2em; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ccc; padding: 0.5em; text-align: left; }
+        th { background: #f0f0f0; }
+        .comment-input { width: 90%; }
+    </style>
+</head>
+<body>
+    <h1>Task Time Tracker</h1>
+    <div id="timer">00:00:00</div>
+    <button id="toggleBtn">Start</button>
+    <div id="periods">
+        <h2>Work Periods</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Start Time</th>
+                    <th>End Time</th>
+                    <th>Duration</th>
+                    <th>Comment</th>
+                </tr>
+            </thead>
+            <tbody id="periodsBody">
+            </tbody>
+        </table>
+    </div>
+    <script>
+        let timerInterval = null;
+        let startTime = null;
+        let elapsed = 0;
+        let periods = [];
+
+        function formatTime(ms) {
+            const totalSeconds = Math.floor(ms / 1000);
+            const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+            const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+            const seconds = String(totalSeconds % 60).padStart(2, '0');
+            return `${hours}:${minutes}:${seconds}`;
+        }
+
+        function updateTimerDisplay() {
+            const now = Date.now();
+            let display = elapsed;
+            if (startTime) {
+                display += now - startTime;
+            }
+            document.getElementById('timer').textContent = formatTime(display);
+            renderPeriods(); // Update table live for in-progress period
+        }
+
+        function renderPeriods() {
+            const tbody = document.getElementById('periodsBody');
+            tbody.innerHTML = '';
+            // Show all completed periods, most recent first
+            for (let i = periods.length - 1; i >= 0; i--) {
+                const p = periods[i];
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${periods.length - i}</td>
+                    <td>${p.start ? new Date(p.start).toLocaleString() : ''}</td>
+                    <td>${p.end ? new Date(p.end).toLocaleString() : ''}</td>
+                    <td>${p.end ? formatTime(p.end - p.start) : (p.start ? formatTime(Date.now() - p.start) : '')}</td>
+                    <td>
+                        <input class="comment-input" type="text" value="${p.comment || ''}" data-index="${i}" />
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            }
+            // Show current period in progress (if any)
+            if (startTime) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>1</td>
+                    <td>${new Date(startTime).toLocaleString()}</td>
+                    <td><em>In progress</em></td>
+                    <td>${formatTime(Date.now() - startTime)}</td>
+                    <td><em>—</em></td>
+                `;
+                tbody.insertBefore(tr, tbody.firstChild);
+            }
+            document.querySelectorAll('.comment-input').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const idx = e.target.getAttribute('data-index');
+                    periods[idx].comment = e.target.value;
+                    savePeriods();
+                });
+            });
+        }
+
+        function savePeriods() {
+            localStorage.setItem('workPeriods', JSON.stringify(periods));
+        }
+
+        function loadPeriods() {
+            const data = localStorage.getItem('workPeriods');
+            if (data) {
+                periods = JSON.parse(data);
+            }
+        }
+
+        function startTimer() {
+            startTime = Date.now();
+            timerInterval = setInterval(updateTimerDisplay, 500);
+            document.getElementById('toggleBtn').textContent = 'Stop';
+            document.getElementById('toggleBtn').style.background = '#e74c3c';
+        }
+
+        function stopTimer() {
+            clearInterval(timerInterval);
+            timerInterval = null;
+            const endTime = Date.now();
+            periods.push({ start: startTime, end: endTime, comment: '' });
+            savePeriods();
+            elapsed = 0;
+            startTime = null;
+            document.getElementById('timer').textContent = '00:00:00';
+            document.getElementById('toggleBtn').textContent = 'Start';
+            document.getElementById('toggleBtn').style.background = '';
+            renderPeriods(); // Move after resetting startTime to avoid extra row
+        }
+
+        document.getElementById('toggleBtn').addEventListener('click', () => {
+            if (timerInterval) {
+                stopTimer();
+            } else {
+                startTimer();
+            }
+        });
+
+        // Initialize
+        loadPeriods();
+        renderPeriods();
+        updateTimerDisplay();
+    </script>
+</body>
+</html>
