@@ -171,11 +171,16 @@
                     selector = `#comment-input-${prevDataIndex}`;
                 }
                 if (selector) {
-                    const input = document.querySelector(selector);
-                    if (input) {
-                        // Only set selection if the input is still in the DOM
-                        input.setSelectionRange(prevSelectionStart, prevSelectionEnd);
-                    }
+                    // Use requestAnimationFrame to avoid scroll jumps
+                    requestAnimationFrame(() => {
+                        const input = document.querySelector(selector);
+                        if (input) {
+                            input.focus({ preventScroll: true });
+                            if (prevSelectionStart !== null && prevSelectionEnd !== null) {
+                                input.setSelectionRange(prevSelectionStart, prevSelectionEnd);
+                            }
+                        }
+                    });
                 }
             }
             setGraphUpdateInterval();
