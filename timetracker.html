@@ -116,46 +116,54 @@
                     <td>${p.end ? new Date(p.end).toLocaleString() : ''}</td>
                     <td>${p.end ? formatTime(p.end - p.start) : (p.start ? formatTime(Date.now() - p.start) : '')}</td>
                     <td>
-                        <input class="comment-input" type="text" value="${p.comment || ''}" data-index="${i}" />
+                        <input class="comment-input" type="text" value="${p.comment || ''}" data-index="${i}" autocomplete="off" />
                     </td>
                 `;
                 tbody.appendChild(tr);
             }
             // Show current period in progress (if any)
             if (startTime) {
-                // Preserve focus and selection for in-progress comment
-                const prevInput = document.activeElement;
-                const prevValue = prevInput && prevInput.id === 'inProgressComment' ? prevInput.value : null;
-                const prevSelectionStart = prevInput && prevInput.id === 'inProgressComment' ? prevInput.selectionStart : null;
-                const prevSelectionEnd = prevInput && prevInput.id === 'inProgressComment' ? prevInput.selectionEnd : null;
-
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${new Date(startTime).toLocaleString()}</td>
-                    <td><em>In progress</em></td>
-                    <td>${formatTime(Date.now() - startTime)}</td>
-                    <td>
-                        <input class="comment-input" type="text" id="inProgressComment" value="${window.inProgressComment || ''}" />
-                    </td>
-                `;
-                tbody.insertBefore(tr, tbody.firstChild);
-                // Attach event for in-progress comment
-                setTimeout(() => {
+                // Only update the value of the input, not the whole element, if it already exists
+                const prevInput = document.getElementById('inProgressComment');
+                let prevSelectionStart = null, prevSelectionEnd = null;
+                if (prevInput) {
+                    prevSelectionStart = prevInput.selectionStart;
+                    prevSelectionEnd = prevInput.selectionEnd;
+                }
+                let tr = document.getElementById('inProgressRow');
+                if (!tr) {
+                    tr = document.createElement('tr');
+                    tr.id = 'inProgressRow';
+                    tr.innerHTML = `
+                        <td>${new Date(startTime).toLocaleString()}</td>
+                        <td><em>In progress</em></td>
+                        <td>${formatTime(Date.now() - startTime)}</td>
+                        <td>
+                            <input class="comment-input" type="text" id="inProgressComment" value="${window.inProgressComment || ''}" autocomplete="off" />
+                        </td>
+                    `;
+                    tbody.insertBefore(tr, tbody.firstChild);
                     const input = document.getElementById('inProgressComment');
                     if (input) {
                         input.addEventListener('input', (e) => {
                             window.inProgressComment = e.target.value;
                             localStorage.setItem('inProgressComment', window.inProgressComment);
                         });
-                        // Restore focus and selection if previously focused
-                        if (prevInput && prevInput.id === 'inProgressComment') {
-                            input.focus();
-                            if (prevSelectionStart !== null && prevSelectionEnd !== null) {
-                                input.setSelectionRange(prevSelectionStart, prevSelectionEnd);
-                            }
+                    }
+                } else {
+                    // Only update the value and duration, not the whole row
+                    const input = document.getElementById('inProgressComment');
+                    if (input) {
+                        if (input.value !== window.inProgressComment) {
+                            input.value = window.inProgressComment || '';
+                        }
+                        if (prevSelectionStart !== null && prevSelectionEnd !== null && document.activeElement === input) {
+                            input.setSelectionRange(prevSelectionStart, prevSelectionEnd);
                         }
                     }
-                }, 0);
+                    // Update duration cell
+                    tr.children[2].textContent = formatTime(Date.now() - startTime);
+                }
             }
             document.querySelectorAll('.comment-input').forEach(input => {
                 if (input.id !== 'inProgressComment') {
