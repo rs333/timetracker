@@ -183,7 +183,10 @@
                                     input.value = periods[idx].comment || '';
                                 }
                             }
-                            input.focus({ preventScroll: true });
+                            // Only call focus if the input was already focused
+                            if (wasFocused && document.activeElement !== input) {
+                                input.focus({ preventScroll: true });
+                            }
                             if (prevSelectionStart !== null && prevSelectionEnd !== null) {
                                 input.setSelectionRange(prevSelectionStart, prevSelectionEnd);
                             }
