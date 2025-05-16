@@ -59,6 +59,32 @@
         let graphUpdateInterval = null;
         let lastGraphUpdate = 0;
 
+        function saveTimerState() {
+            if (startTime) {
+                localStorage.setItem('timerInProgress', JSON.stringify({ startTime, elapsed }));
+            } else {
+                localStorage.removeItem('timerInProgress');
+            }
+        }
+
+        function loadTimerState() {
+            const data = localStorage.getItem('timerInProgress');
+            if (data) {
+                try {
+                    const obj = JSON.parse(data);
+                    if (obj && obj.startTime) {
+                        startTime = obj.startTime;
+                        elapsed = obj.elapsed || 0;
+                        // Resume timer
+                        timerInterval = setInterval(updateTimerDisplay, 500);
+                        document.getElementById('toggleBtn').textContent = 'Stop';
+                        document.getElementById('toggleBtn').style.background = '#e74c3c';
+                        setGraphUpdateInterval();
+                    }
+                } catch (e) {}
+            }
+        }
+
         function formatTime(ms) {
             const totalSeconds = Math.floor(ms / 1000);
             const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
@@ -75,6 +101,7 @@
             }
             document.getElementById('timer').textContent = formatTime(display);
             renderPeriods(); // Update table live for in-progress period
+            saveTimerState();
         }
 
         function renderPeriods() {
@@ -131,10 +158,12 @@
 
         function startTimer() {
             startTime = Date.now();
+            elapsed = 0;
             timerInterval = setInterval(updateTimerDisplay, 500);
             document.getElementById('toggleBtn').textContent = 'Stop';
             document.getElementById('toggleBtn').style.background = '#e74c3c';
             setGraphUpdateInterval();
+            saveTimerState();
         }
 
         function stopTimer() {
@@ -149,6 +178,7 @@
             document.getElementById('toggleBtn').textContent = 'Start';
             document.getElementById('toggleBtn').style.background = '';
             if (graphUpdateInterval) clearInterval(graphUpdateInterval);
+            saveTimerState();
             renderPeriods(); // Move after resetting startTime to avoid extra row
             renderWeeklyBarChart(true); // Always update graph on stop
         }
@@ -194,6 +224,14 @@
                     weekMap[weekKey] += (end - start) / (1000 * 60 * 60); // hours
                 }
             });
+            // Add in-progress period if any
+            if (startTime) {
+                const now = Date.now();
+                const weekKey = getWeekStart(startTime).toISOString().slice(0,10);
+                if (weekKey in weekMap) {
+                    weekMap[weekKey] += (now - startTime + (elapsed || 0)) / (1000 * 60 * 60); // hours
+                }
+            }
             return weekStarts.map(week => ({ week, hours: weekMap[week] }));
         }
 
@@ -245,6 +283,7 @@
 
         // Initialize
         loadPeriods();
+        loadTimerState();
         renderPeriods();
         updateTimerDisplay();
         window.addEventListener('DOMContentLoaded', () => renderWeeklyBarChart(true));
