@@ -131,19 +131,20 @@
                     </td>
                 `;
                 tbody.appendChild(tr);
-                // After appending, restore value and selection if this input was focused
                 const input = tr.querySelector('.comment-input');
                 if (input) {
+                    // Use input event to update model as user types
+                    input.addEventListener('input', (e) => {
+                        const idx = e.target.getAttribute('data-index');
+                        periods[idx].comment = e.target.value;
+                    });
                     input.addEventListener('change', (e) => {
                         const idx = e.target.getAttribute('data-index');
                         periods[idx].comment = e.target.value;
                         savePeriods();
                     });
+                    // If this input was focused, restore selection and do NOT set value
                     if (wasFocused && prevId === input.id) {
-                        // Only update value if not focused, to avoid overwriting user edits
-                        if (document.activeElement !== input) {
-                            input.value = periods[i].comment || '';
-                        }
                         requestAnimationFrame(() => {
                             if (document.activeElement !== input) {
                                 input.focus({ preventScroll: true });
