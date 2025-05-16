@@ -123,6 +123,12 @@
             }
             // Show current period in progress (if any)
             if (startTime) {
+                // Preserve focus and selection for in-progress comment
+                const prevInput = document.activeElement;
+                const prevValue = prevInput && prevInput.id === 'inProgressComment' ? prevInput.value : null;
+                const prevSelectionStart = prevInput && prevInput.id === 'inProgressComment' ? prevInput.selectionStart : null;
+                const prevSelectionEnd = prevInput && prevInput.id === 'inProgressComment' ? prevInput.selectionEnd : null;
+
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>${new Date(startTime).toLocaleString()}</td>
@@ -141,6 +147,13 @@
                             window.inProgressComment = e.target.value;
                             localStorage.setItem('inProgressComment', window.inProgressComment);
                         });
+                        // Restore focus and selection if previously focused
+                        if (prevInput && prevInput.id === 'inProgressComment') {
+                            input.focus();
+                            if (prevSelectionStart !== null && prevSelectionEnd !== null) {
+                                input.setSelectionRange(prevSelectionStart, prevSelectionEnd);
+                            }
+                        }
                     }
                 }, 0);
             }
