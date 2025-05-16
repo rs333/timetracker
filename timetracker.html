@@ -46,6 +46,7 @@
                 <option value="52">52 weeks</option>
             </select>
         </label>
+        <button id="refreshGraphBtn" style="margin-left:1em;">Refresh</button>
         <canvas id="weeklyBarChart" width="600" height="300"></canvas>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -54,6 +55,9 @@
         let startTime = null;
         let elapsed = 0;
         let periods = [];
+        let barChart = null;
+        let graphUpdateInterval = null;
+        let lastGraphUpdate = 0;
 
         function formatTime(ms) {
             const totalSeconds = Math.floor(ms / 1000);
@@ -110,6 +114,7 @@
                     savePeriods();
                 });
             });
+            setGraphUpdateInterval();
             renderWeeklyBarChart();
         }
 
@@ -129,6 +134,7 @@
             timerInterval = setInterval(updateTimerDisplay, 500);
             document.getElementById('toggleBtn').textContent = 'Stop';
             document.getElementById('toggleBtn').style.background = '#e74c3c';
+            setGraphUpdateInterval();
         }
 
         function stopTimer() {
@@ -142,7 +148,9 @@
             document.getElementById('timer').textContent = '00:00:00';
             document.getElementById('toggleBtn').textContent = 'Start';
             document.getElementById('toggleBtn').style.background = '';
+            if (graphUpdateInterval) clearInterval(graphUpdateInterval);
             renderPeriods(); // Move after resetting startTime to avoid extra row
+            renderWeeklyBarChart(true); // Always update graph on stop
         }
 
         document.getElementById('toggleBtn').addEventListener('click', () => {
@@ -189,8 +197,11 @@
             return weekStarts.map(week => ({ week, hours: weekMap[week] }));
         }
 
-        let barChart = null;
-        function renderWeeklyBarChart() {
+        function renderWeeklyBarChart(force = false) {
+            // Only update if at least 1 minute has passed or force is true
+            const now = Date.now();
+            if (!force && timerInterval && now - lastGraphUpdate < 60000) return;
+            lastGraphUpdate = now;
             const weeksBack = parseInt(document.getElementById('weeksRange').value, 10);
             const summary = getWeeklySummary(periods, weeksBack);
             const ctx = document.getElementById('weeklyBarChart').getContext('2d');
@@ -221,13 +232,22 @@
             });
         }
 
-        document.getElementById('weeksRange').addEventListener('change', renderWeeklyBarChart);
+        document.getElementById('weeksRange').addEventListener('change', () => renderWeeklyBarChart(true));
+        document.getElementById('refreshGraphBtn').addEventListener('click', () => renderWeeklyBarChart(true));
+
+        function setGraphUpdateInterval() {
+            if (graphUpdateInterval) clearInterval(graphUpdateInterval);
+            if (timerInterval) {
+                // Update graph every minute while timer is running
+                graphUpdateInterval = setInterval(() => renderWeeklyBarChart(), 60000);
+            }
+        }
 
         // Initialize
         loadPeriods();
         renderPeriods();
         updateTimerDisplay();
-        window.addEventListener('DOMContentLoaded', renderWeeklyBarChart);
+        window.addEventListener('DOMContentLoaded', () => renderWeeklyBarChart(true));
     </script>
 </body>
 </html>
