@@ -35,18 +35,20 @@
         </table>
     </div>
     <div id="summary">
-        <h2>Weekly Summary</h2>
-        <label for="weeksRange">Show last 
-            <select id="weeksRange">
-                <option value="4">4 weeks</option>
-                <option value="8">8 weeks</option>
-                <option value="12">12 weeks</option>
-                <option value="24">24 weeks</option>
-                <option value="52">52 weeks</option>
+        <h2>Summary</h2>
+        <label for="summaryRange">Show data for last 
+            <select id="summaryRange">
+                <option value="7d">7 days</option>
+                <option value="30d">30 days</option>
+                <option value="4w" selected>4 weeks</option>
+                <option value="8w">8 weeks</option>
+                <option value="12w">12 weeks</option>
+                <option value="24w">24 weeks</option>
+                <option value="52w">52 weeks</option>
             </select>
         </label>
         <button id="refreshGraphBtn" style="margin-left:1em;">Refresh</button>
-        <canvas id="weeklyBarChart" width="600" height="300"></canvas>
+        <canvas id="summaryChart" width="600" height="300"></canvas>
     </div>
     <div style="margin-top:2em;">
         <button id="exportBtn">Export Data</button>
@@ -61,6 +63,7 @@
         let periods = [];
         let barChart = null;
         let graphUpdateInterval = null;
+        let stateSaveInterval = null;
         let lastGraphUpdate = 0;
 
         function saveTimerState() {
@@ -80,10 +83,11 @@
                         startTime = obj.startTime;
                         elapsed = obj.elapsed || 0;
                         window.inProgressComment = localStorage.getItem('inProgressComment') || '';
-                        // Resume timer
                         timerInterval = setInterval(updateTimerDisplay, 500);
+                        stateSaveInterval = setInterval(saveTimerState, 5000);
                         document.getElementById('toggleBtn').textContent = 'Stop';
                         document.getElementById('toggleBtn').style.background = '#e74c3c';
+                        addInProgressRow();
                         setGraphUpdateInterval();
                     }
                 } catch (e) {}
@@ -103,101 +107,68 @@
             let display = elapsed;
             if (startTime) {
                 display += now - startTime;
+                // Update the in-progress row's duration if it exists
+                const inProgressDurationCell = document.querySelector('#inProgressRow > td:nth-child(3)');
+                if (inProgressDurationCell) {
+                    inProgressDurationCell.textContent = formatTime(now - startTime);
+                }
             }
             document.getElementById('timer').textContent = formatTime(display);
-            renderPeriods(); // Update table live for in-progress period
-            saveTimerState();
         }
 
+        // Renders only the completed periods. Called once on load.
         function renderPeriods() {
             const tbody = document.getElementById('periodsBody');
-            // Save focus and selection for any comment input
-            let prevInput = document.activeElement;
-            let prevId = prevInput && prevInput.classList.contains('comment-input') ? prevInput.id : null;
-            let prevDataIndex = prevInput && prevInput.classList.contains('comment-input') ? prevInput.getAttribute('data-index') : null;
-            let prevSelectionStart = null, prevSelectionEnd = null;
-            let wasFocused = false;
-            if (prevInput && prevInput.classList.contains('comment-input')) {
-                wasFocused = true;
-                prevSelectionStart = prevInput.selectionStart;
-                prevSelectionEnd = prevInput.selectionEnd;
-            }
             tbody.innerHTML = '';
             // Show all completed periods, most recent first
             for (let i = periods.length - 1; i >= 0; i--) {
                 const p = periods[i];
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td>${p.start ? new Date(p.start).toLocaleString() : ''}</td>
-                    <td>${p.end ? new Date(p.end).toLocaleString() : ''}</td>
-                    <td>${p.end ? formatTime(p.end - p.start) : (p.start ? formatTime(Date.now() - p.start) : '')}</td>
+                    <td>${new Date(p.start).toLocaleString()}</td>
+                    <td>${new Date(p.end).toLocaleString()}</td>
+                    <td>${formatTime(p.end - p.start)}</td>
                     <td>
-                        <input class="comment-input" type="text" value="${p.comment || ''}" data-index="${i}" id="comment-input-${i}" autocomplete="off" />
+                        <input class="comment-input" type="text" value="${p.comment || ''}" data-index="${i}" autocomplete="off" />
                     </td>
                 `;
                 tbody.appendChild(tr);
-                const input = tr.querySelector('.comment-input');
-                if (input) {
-                    // Use input event to update model as user types
-                    input.addEventListener('input', (e) => {
-                        const idx = e.target.getAttribute('data-index');
-                        periods[idx].comment = e.target.value;
-                    });
-                    input.addEventListener('change', (e) => {
-                        const idx = e.target.getAttribute('data-index');
-                        periods[idx].comment = e.target.value;
-                        savePeriods();
-                    });
-                    // If this input was focused, restore selection and do NOT set value
-                    if (wasFocused && prevId === input.id) {
-                        requestAnimationFrame(() => {
-                            if (document.activeElement !== input) {
-                                input.focus({ preventScroll: true });
-                            }
-                            if (prevSelectionStart !== null && prevSelectionEnd !== null) {
-                                input.setSelectionRange(prevSelectionStart, prevSelectionEnd);
-                            }
-                        });
-                    }
-                }
             }
-            // Show current period in progress (if any)
-            if (startTime) {
-                const tr = document.createElement('tr');
-                tr.id = 'inProgressRow';
-                tr.innerHTML = `
-                    <td>${new Date(startTime).toLocaleString()}</td>
-                    <td><em>In progress</em></td>
-                    <td>${formatTime(Date.now() - startTime)}</td>
-                    <td>
-                        <input class="comment-input" type="text" id="inProgressComment" value="${window.inProgressComment || ''}" autocomplete="off" />
-                    </td>
-                `;
-                tbody.insertBefore(tr, tbody.firstChild);
-                const input = document.getElementById('inProgressComment');
-                if (input) {
-                    input.addEventListener('input', (e) => {
-                        window.inProgressComment = e.target.value;
-                        localStorage.setItem('inProgressComment', window.inProgressComment);
-                    });
-                    if (wasFocused && prevId === input.id) {
-                        // Only update value if not focused, to avoid overwriting user edits
-                        if (document.activeElement !== input) {
-                            input.value = window.inProgressComment || '';
-                        }
-                        requestAnimationFrame(() => {
-                            if (document.activeElement !== input) {
-                                input.focus({ preventScroll: true });
-                            }
-                            if (prevSelectionStart !== null && prevSelectionEnd !== null) {
-                                input.setSelectionRange(prevSelectionStart, prevSelectionEnd);
-                            }
-                        });
-                    }
-                }
-            }
-            setGraphUpdateInterval();
-            renderWeeklyBarChart();
+        }
+
+        function addInProgressRow() {
+            const tbody = document.getElementById('periodsBody');
+            if (document.getElementById('inProgressRow')) return; // Already exists
+            const tr = document.createElement('tr');
+            tr.id = 'inProgressRow';
+            tr.innerHTML = `
+                <td>${new Date(startTime).toLocaleString()}</td>
+                <td><em>In progress</em></td>
+                <td>${formatTime(0)}</td>
+                <td>
+                    <input class="comment-input" type="text" id="inProgressComment" value="${window.inProgressComment || ''}" autocomplete="off" />
+                </td>
+            `;
+            tbody.insertBefore(tr, tbody.firstChild);
+        }
+
+        function removeInProgressRow() {
+            const row = document.getElementById('inProgressRow');
+            if (row) row.remove();
+        }
+
+        function addCompletedPeriodRow(p, index) {
+            const tbody = document.getElementById('periodsBody');
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${new Date(p.start).toLocaleString()}</td>
+                <td>${new Date(p.end).toLocaleString()}</td>
+                <td>${formatTime(p.end - p.start)}</td>
+                <td>
+                    <input class="comment-input" type="text" value="${p.comment || ''}" data-index="${index}" autocomplete="off" />
+                </td>
+            `;
+            tbody.insertBefore(tr, tbody.firstChild);
         }
 
         function savePeriods() {
@@ -207,7 +178,12 @@
         function loadPeriods() {
             const data = localStorage.getItem('workPeriods');
             if (data) {
-                periods = JSON.parse(data);
+                try {
+                    periods = JSON.parse(data);
+                } catch(e) {
+                    console.error("Error parsing periods from localStorage", e);
+                    periods = [];
+                }
             }
         }
 
@@ -217,18 +193,28 @@
             window.inProgressComment = '';
             localStorage.removeItem('inProgressComment');
             timerInterval = setInterval(updateTimerDisplay, 500);
+            stateSaveInterval = setInterval(saveTimerState, 5000);
             document.getElementById('toggleBtn').textContent = 'Stop';
             document.getElementById('toggleBtn').style.background = '#e74c3c';
+            addInProgressRow();
             setGraphUpdateInterval();
-            saveTimerState();
+            saveTimerState(); // Save immediately
         }
 
         function stopTimer() {
             clearInterval(timerInterval);
+            clearInterval(stateSaveInterval);
             timerInterval = null;
+            stateSaveInterval = null;
+
             const endTime = Date.now();
-            periods.push({ start: startTime, end: endTime, comment: window.inProgressComment || '' });
+            const newPeriod = { start: startTime, end: endTime, comment: window.inProgressComment || '' };
+            periods.push(newPeriod);
             savePeriods();
+
+            removeInProgressRow();
+            addCompletedPeriodRow(newPeriod, periods.length - 1);
+
             elapsed = 0;
             startTime = null;
             window.inProgressComment = '';
@@ -237,9 +223,8 @@
             document.getElementById('toggleBtn').textContent = 'Start';
             document.getElementById('toggleBtn').style.background = '';
             if (graphUpdateInterval) clearInterval(graphUpdateInterval);
-            saveTimerState();
-            renderPeriods(); // Move after resetting startTime to avoid extra row
-            renderWeeklyBarChart(true); // Always update graph on stop
+            saveTimerState(); // Save final state
+            renderSummaryChart(true); // Always update graph on stop
         }
 
         document.getElementById('toggleBtn').addEventListener('click', () => {
@@ -249,6 +234,12 @@
                 startTimer();
             }
         });
+
+        function getDayStart(date) {
+            const d = new Date(date);
+            d.setHours(0,0,0,0);
+            return d;
+        }
 
         function getWeekStart(date) {
             const d = new Date(date);
@@ -260,83 +251,100 @@
             return d;
         }
 
-        function getWeeklySummary(periods, weeksBack) {
+        function getSummaryData(periods, range) {
+            const unit = range.slice(-1);
+            const count = parseInt(range.slice(0, -1), 10);
             const now = new Date();
-            const weekMs = 7 * 24 * 60 * 60 * 1000;
-            const weekStarts = [];
-            const weekMap = {};
-            // Find the start of the current week
-            let currentWeekStart = getWeekStart(now);
-            for (let i = 0; i < weeksBack; i++) {
-                const weekKey = currentWeekStart.toISOString().slice(0,10);
-                weekStarts.unshift(weekKey);
-                weekMap[weekKey] = 0;
-                currentWeekStart = new Date(currentWeekStart.getTime() - weekMs);
+            const labels = [];
+            const dataMap = {};
+
+            let periodMs, getPeriodStart;
+            if (unit === 'w') {
+                periodMs = 7 * 24 * 60 * 60 * 1000;
+                getPeriodStart = getWeekStart;
+            } else { // 'd'
+                periodMs = 24 * 60 * 60 * 1000;
+                getPeriodStart = getDayStart;
             }
-            // Sum durations per week
+
+            let currentPeriodStart = getPeriodStart(now);
+            for (let i = 0; i < count; i++) {
+                const key = currentPeriodStart.toISOString().slice(0,10);
+                labels.unshift(key);
+                dataMap[key] = 0;
+                currentPeriodStart = new Date(currentPeriodStart.getTime() - periodMs);
+            }
+
+            // Sum durations per period
             periods.forEach(p => {
                 if (!p.start || !p.end) return;
                 const start = new Date(p.start);
                 const end = new Date(p.end);
-                const weekKey = getWeekStart(start).toISOString().slice(0,10);
-                if (weekKey in weekMap) {
-                    weekMap[weekKey] += (end - start) / (1000 * 60 * 60); // hours
+                const periodKey = getPeriodStart(start).toISOString().slice(0,10);
+                if (periodKey in dataMap) {
+                    dataMap[periodKey] += (end - start) / (1000 * 60 * 60); // hours
                 }
             });
+
             // Add in-progress period if any
             if (startTime) {
-                const now = Date.now();
-                const weekKey = getWeekStart(startTime).toISOString().slice(0,10);
-                if (weekKey in weekMap) {
-                    weekMap[weekKey] += (now - startTime + (elapsed || 0)) / (1000 * 60 * 60); // hours
+                const nowTs = Date.now();
+                const periodKey = getPeriodStart(new Date(startTime)).toISOString().slice(0,10);
+                if (periodKey in dataMap) {
+                    dataMap[periodKey] += (nowTs - startTime + (elapsed || 0)) / (1000 * 60 * 60); // hours
                 }
             }
-            return weekStarts.map(week => ({ week, hours: weekMap[week] }));
+
+            return labels.map(label => ({ label, hours: dataMap[label] }));
         }
 
-        function renderWeeklyBarChart(force = false) {
+        function renderSummaryChart(force = false) {
             // Only update if at least 1 minute has passed or force is true
             const now = Date.now();
             if (!force && timerInterval && now - lastGraphUpdate < 60000) return;
             lastGraphUpdate = now;
-            const weeksBack = parseInt(document.getElementById('weeksRange').value, 10);
-            const summary = getWeeklySummary(periods, weeksBack);
-            const ctx = document.getElementById('weeklyBarChart').getContext('2d');
-            const labels = summary.map(s => s.week);
+
+            const range = document.getElementById('summaryRange').value;
+            const summary = getSummaryData(periods, range);
+            const labels = summary.map(s => s.label);
             const data = summary.map(s => s.hours.toFixed(2));
-            if (barChart) barChart.destroy();
-            barChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Hours Worked',
-                        data: data,
-                        backgroundColor: '#3498db',
-                    }]
-                },
-                options: {
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            title: { display: true, text: 'Hours' }
-                        },
-                        x: {
-                            title: { display: true, text: 'Week Starting' }
+            const xLabel = range.slice(-1) === 'w' ? 'Week Starting' : 'Date';
+
+            if (barChart) {
+                barChart.data.labels = labels;
+                barChart.data.datasets[0].data = data;
+                barChart.options.scales.x.title.text = xLabel;
+                barChart.update();
+            } else {
+                const ctx = document.getElementById('summaryChart').getContext('2d');
+                barChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Hours Worked',
+                            data: data,
+                            backgroundColor: '#3498db',
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            y: { beginAtZero: true, title: { display: true, text: 'Hours' } },
+                            x: { title: { display: true, text: xLabel } }
                         }
                     }
-                }
-            });
+                });
+            }
         }
 
-        document.getElementById('weeksRange').addEventListener('change', () => renderWeeklyBarChart(true));
-        document.getElementById('refreshGraphBtn').addEventListener('click', () => renderWeeklyBarChart(true));
+        document.getElementById('summaryRange').addEventListener('change', () => renderSummaryChart(true));
+        document.getElementById('refreshGraphBtn').addEventListener('click', () => renderSummaryChart(true));
 
         function setGraphUpdateInterval() {
             if (graphUpdateInterval) clearInterval(graphUpdateInterval);
             if (timerInterval) {
                 // Update graph every minute while timer is running
-                graphUpdateInterval = setInterval(() => renderWeeklyBarChart(), 60000);
+                graphUpdateInterval = setInterval(() => renderSummaryChart(), 60000);
             }
         }
 
@@ -381,9 +389,8 @@
                     }
                     loadPeriods();
                     loadTimerState();
-                    renderPeriods();
-                    updateTimerDisplay();
-                    renderWeeklyBarChart(true);
+                    renderPeriods(); // Re-render table with imported data
+                    // The functions above will trigger renders as needed
                     alert('Data imported successfully.');
                 } catch (err) {
                     alert('Failed to import data: ' + err);
@@ -403,12 +410,31 @@
             }
         });
 
+        // Use event delegation for comment inputs for performance
+        document.getElementById('periodsBody').addEventListener('input', (e) => {
+            if (e.target.classList.contains('comment-input')) {
+                if (e.target.id === 'inProgressComment') {
+                    window.inProgressComment = e.target.value;
+                    localStorage.setItem('inProgressComment', window.inProgressComment);
+                } else {
+                    const idx = e.target.getAttribute('data-index');
+                    if (idx !== null) periods[idx].comment = e.target.value;
+                }
+            }
+        });
+        document.getElementById('periodsBody').addEventListener('change', (e) => {
+            if (e.target.classList.contains('comment-input')) {
+                const idx = e.target.getAttribute('data-index');
+                if (idx !== null) savePeriods();
+            }
+        });
+
         // Initialize
         loadPeriods();
-        loadTimerState();
         renderPeriods();
+        loadTimerState();
         updateTimerDisplay();
-        window.addEventListener('DOMContentLoaded', () => renderWeeklyBarChart(true));
+        window.addEventListener('DOMContentLoaded', () => renderSummaryChart(true));
     </script>
 </body>
 </html>
