@@ -45,6 +45,9 @@
                 <option value="12w">12 weeks</option>
                 <option value="24w">24 weeks</option>
                 <option value="52w">52 weeks</option>
+                <option value="3m">3 months</option>
+                <option value="6m">6 months</option>
+                <option value="12m">12 months</option>
             </select>
         </label>
         <button id="refreshGraphBtn" style="margin-left:1em;">Refresh</button>
@@ -251,6 +254,14 @@
             return d;
         }
 
+        // Helper for month start
+        function getMonthStart(date) {
+            const d = new Date(date);
+            d.setDate(1);
+            d.setHours(0,0,0,0);
+            return d;
+        }
+
         function getSummaryData(periods, range) {
             const unit = range.slice(-1);
             const count = parseInt(range.slice(0, -1), 10);
@@ -258,21 +269,35 @@
             const labels = [];
             const dataMap = {};
 
-            let periodMs, getPeriodStart;
+            let periodMs, getPeriodStart, advancePeriod;
             if (unit === 'w') {
                 periodMs = 7 * 24 * 60 * 60 * 1000;
                 getPeriodStart = getWeekStart;
+                advancePeriod = d => new Date(d.getTime() - periodMs);
+            } else if (unit === 'm') {
+                getPeriodStart = getMonthStart;
+                advancePeriod = d => {
+                    const prev = new Date(d);
+                    prev.setMonth(prev.getMonth() - 1);
+                    return getMonthStart(prev);
+                };
             } else { // 'd'
                 periodMs = 24 * 60 * 60 * 1000;
                 getPeriodStart = getDayStart;
+                advancePeriod = d => new Date(d.getTime() - periodMs);
             }
 
             let currentPeriodStart = getPeriodStart(now);
             for (let i = 0; i < count; i++) {
-                const key = currentPeriodStart.toISOString().slice(0,10);
+                let key;
+                if (unit === 'm') {
+                    key = `${currentPeriodStart.getFullYear()}-${String(currentPeriodStart.getMonth() + 1).padStart(2, '0')}`;
+                } else {
+                    key = currentPeriodStart.toISOString().slice(0,10);
+                }
                 labels.unshift(key);
                 dataMap[key] = 0;
-                currentPeriodStart = new Date(currentPeriodStart.getTime() - periodMs);
+                currentPeriodStart = advancePeriod(currentPeriodStart);
             }
 
             // Sum durations per period
@@ -280,7 +305,12 @@
                 if (!p.start || !p.end) return;
                 const start = new Date(p.start);
                 const end = new Date(p.end);
-                const periodKey = getPeriodStart(start).toISOString().slice(0,10);
+                let periodKey;
+                if (unit === 'm') {
+                    periodKey = `${getMonthStart(start).getFullYear()}-${String(getMonthStart(start).getMonth() + 1).padStart(2, '0')}`;
+                } else {
+                    periodKey = getPeriodStart(start).toISOString().slice(0,10);
+                }
                 if (periodKey in dataMap) {
                     dataMap[periodKey] += (end - start) / (1000 * 60 * 60); // hours
                 }
@@ -289,7 +319,12 @@
             // Add in-progress period if any
             if (startTime) {
                 const nowTs = Date.now();
-                const periodKey = getPeriodStart(new Date(startTime)).toISOString().slice(0,10);
+                let periodKey;
+                if (unit === 'm') {
+                    periodKey = `${getMonthStart(new Date(startTime)).getFullYear()}-${String(getMonthStart(new Date(startTime)).getMonth() + 1).padStart(2, '0')}`;
+                } else {
+                    periodKey = getPeriodStart(new Date(startTime)).toISOString().slice(0,10);
+                }
                 if (periodKey in dataMap) {
                     dataMap[periodKey] += (nowTs - startTime + (elapsed || 0)) / (1000 * 60 * 60); // hours
                 }
@@ -308,7 +343,14 @@
             const summary = getSummaryData(periods, range);
             const labels = summary.map(s => s.label);
             const data = summary.map(s => s.hours.toFixed(2));
-            const xLabel = range.slice(-1) === 'w' ? 'Week Starting' : 'Date';
+            let xLabel;
+            if (range.slice(-1) === 'w') {
+                xLabel = 'Week Starting';
+            } else if (range.slice(-1) === 'm') {
+                xLabel = 'Month';
+            } else {
+                xLabel = 'Date';
+            }
 
             if (barChart) {
                 barChart.data.labels = labels;
