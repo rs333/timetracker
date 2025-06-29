@@ -19,21 +19,7 @@
     <h1>Task Time Tracker</h1>
     <div id="timer">00:00:00</div>
     <button id="toggleBtn">Start</button>
-    <div id="periods">
-        <h2>Work Periods</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Start Time</th>
-                    <th>End Time</th>
-                    <th>Duration</th>
-                    <th>Comment</th>
-                </tr>
-            </thead>
-            <tbody id="periodsBody">
-            </tbody>
-        </table>
-    </div>
+
     <div id="summary">
         <h2>Summary</h2>
         <label for="summaryRange">Show data for last 
@@ -52,6 +38,22 @@
         </label>
         <button id="refreshGraphBtn" style="margin-left:1em;">Refresh</button>
         <canvas id="summaryChart" width="600" height="300"></canvas>
+    </div>
+
+    <div id="periods">
+        <h2>Work Periods</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Start Time</th>
+                    <th>End Time</th>
+                    <th>Duration</th>
+                    <th>Comment</th>
+                </tr>
+            </thead>
+            <tbody id="periodsBody">
+            </tbody>
+        </table>
     </div>
     <div style="margin-top:2em;">
         <button id="exportBtn">Export Data</button>
