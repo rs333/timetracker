@@ -127,17 +127,7 @@
             tbody.innerHTML = '';
             // Show all completed periods, most recent first
             for (let i = periods.length - 1; i >= 0; i--) {
-                const p = periods[i];
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${new Date(p.start).toLocaleString()}</td>
-                    <td>${new Date(p.end).toLocaleString()}</td>
-                    <td>${formatTime(p.end - p.start)}</td>
-                    <td>
-                        <input class="comment-input" type="text" value="${p.comment || ''}" data-index="${i}" autocomplete="off" />
-                    </td>
-                `;
-                tbody.appendChild(tr);
+                addCompletedPeriodRow(periods[i], i);
             }
         }
 
@@ -165,9 +155,14 @@
         function addCompletedPeriodRow(p, index) {
             const tbody = document.getElementById('periodsBody');
             const tr = document.createElement('tr');
+            // Add an input for end time/date, type="datetime-local"
+            const endDate = new Date(p.end);
+            const localDateTime = endDate.toISOString().slice(0,16); // "YYYY-MM-DDTHH:MM"
             tr.innerHTML = `
                 <td>${new Date(p.start).toLocaleString()}</td>
-                <td>${new Date(p.end).toLocaleString()}</td>
+                <td>
+                    <input class="endtime-input" type="datetime-local" value="${localDateTime}" data-index="${index}" style="width:170px" />
+                </td>
                 <td>${formatTime(p.end - p.start)}</td>
                 <td>
                     <input class="comment-input" type="text" value="${p.comment || ''}" data-index="${index}" autocomplete="off" />
@@ -470,6 +465,31 @@
             if (e.target.classList.contains('comment-input')) {
                 const idx = e.target.getAttribute('data-index');
                 if (idx !== null) savePeriods();
+            }
+        });
+
+        // Event delegation for end time/date editing
+        document.getElementById('periodsBody').addEventListener('change', (e) => {
+            if (e.target.classList.contains('endtime-input')) {
+                const idx = e.target.getAttribute('data-index');
+                if (idx !== null && periods[idx]) {
+                    const newVal = e.target.value;
+                    // Convert "YYYY-MM-DDTHH:MM" to timestamp
+                    const newEnd = new Date(newVal);
+                    if (!isNaN(newEnd.getTime())) {
+                        // Prevent setting end before start
+                        if (newEnd.getTime() > periods[idx].start) {
+                            periods[idx].end = newEnd.getTime();
+                            savePeriods();
+                            renderPeriods();
+                            renderSummaryChart(true);
+                        } else {
+                            alert('End time must be after start time.');
+                            // Reset input to previous value
+                            e.target.value = new Date(periods[idx].end).toISOString().slice(0,16);
+                        }
+                    }
+                }
             }
         });
 
