@@ -169,7 +169,7 @@
                     <input class="comment-input" type="text" value="${p.comment || ''}" data-index="${index}" autocomplete="off" />
                 </td>
             `;
-            tbody.insertBefore(tr, tbody.firstChild);
+            tbody.appendChild(tr); // <-- Use appendChild to preserve order
         }
 
         function savePeriods() {
@@ -214,7 +214,7 @@
             savePeriods();
 
             removeInProgressRow();
-            addCompletedPeriodRow(newPeriod, periods.length - 1);
+            renderPeriods(); // <-- Ensures the new period is shown immediately
 
             elapsed = 0;
             startTime = null;
@@ -483,6 +483,10 @@
                             periods[idx].end = newEnd.getTime();
                             savePeriods();
                             renderPeriods();
+                            // Restore in-progress row if timer is running
+                            if (timerInterval && startTime) {
+                                addInProgressRow();
+                            }
                             renderSummaryChart(true);
                         } else {
                             alert('End time must be after start time.');
