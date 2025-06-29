@@ -155,9 +155,10 @@
         function addCompletedPeriodRow(p, index) {
             const tbody = document.getElementById('periodsBody');
             const tr = document.createElement('tr');
-            // Add an input for end time/date, type="datetime-local"
+            // Convert end time to local datetime-local string
             const endDate = new Date(p.end);
-            const localDateTime = endDate.toISOString().slice(0,16); // "YYYY-MM-DDTHH:MM"
+            const tzOffset = endDate.getTimezoneOffset() * 60000;
+            const localDateTime = new Date(endDate.getTime() - tzOffset).toISOString().slice(0,16); // "YYYY-MM-DDTHH:MM"
             tr.innerHTML = `
                 <td>${new Date(p.start).toLocaleString()}</td>
                 <td>
