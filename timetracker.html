@@ -244,9 +244,9 @@
         function getWeekStart(date) {
             const d = new Date(date);
             d.setHours(0,0,0,0);
-            // Set to Monday (ISO week)
-            const day = d.getDay();
-            const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+            // Set to Sunday
+            const day = d.getDay(); // 0 for Sunday, 1 for Monday, etc.
+            const diff = d.getDate() - day;
             d.setDate(diff);
             return d;
         }
