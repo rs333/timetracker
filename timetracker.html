@@ -80,6 +80,22 @@
         }
 
         function loadTimerState() {
+            // Always clear intervals and reset UI before loading new state
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+            if (stateSaveInterval) {
+                clearInterval(stateSaveInterval);
+                stateSaveInterval = null;
+            }
+            removeInProgressRow();
+            startTime = null;
+            elapsed = 0;
+            document.getElementById('toggleBtn').textContent = 'Start';
+            document.getElementById('toggleBtn').style.background = '';
+            document.getElementById('timer').textContent = '00:00:00';
+
             const data = localStorage.getItem('timerInProgress');
             if (data) {
                 try {
@@ -211,21 +227,23 @@
             const endTime = Date.now();
             const newPeriod = { start: startTime, end: endTime, comment: window.inProgressComment || '' };
             periods.push(newPeriod);
+
+            // Remove timer state BEFORE UI update so storage event fires and other tabs clear their intervals
+            localStorage.removeItem('timerInProgress');
+            localStorage.removeItem('inProgressComment');
             savePeriods();
 
             removeInProgressRow();
-            renderPeriods(); // <-- Ensures the new period is shown immediately
+            renderPeriods();
 
             elapsed = 0;
             startTime = null;
             window.inProgressComment = '';
-            localStorage.removeItem('inProgressComment');
             document.getElementById('timer').textContent = '00:00:00';
             document.getElementById('toggleBtn').textContent = 'Start';
             document.getElementById('toggleBtn').style.background = '';
             if (graphUpdateInterval) clearInterval(graphUpdateInterval);
-            saveTimerState(); // Save final state
-            renderSummaryChart(true); // Always update graph on stop
+            renderSummaryChart(true);
         }
 
         document.getElementById('toggleBtn').addEventListener('click', () => {
@@ -504,6 +522,33 @@
         loadTimerState();
         updateTimerDisplay();
         window.addEventListener('DOMContentLoaded', () => renderSummaryChart(true));
+
+        // Synchronize data across tabs in real time
+        window.addEventListener('storage', function(e) {
+            if (
+                e.key === 'workPeriods' ||
+                e.key === 'timerInProgress' ||
+                e.key === 'inProgressComment'
+            ) {
+                // Always clear any running intervals/state before reloading
+                if (timerInterval) {
+                    clearInterval(timerInterval);
+                    timerInterval = null;
+                }
+                if (stateSaveInterval) {
+                    clearInterval(stateSaveInterval);
+                    stateSaveInterval = null;
+                }
+                // Remove in-progress row if present
+                removeInProgressRow();
+                // Reload all state and UI
+                loadPeriods();
+                renderPeriods();
+                loadTimerState();
+                updateTimerDisplay();
+                renderSummaryChart(true);
+            }
+        });
     </script>
 </body>
 </html>
