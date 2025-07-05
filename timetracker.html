@@ -10,8 +10,22 @@
         #toggleBtn { font-size: 1.2em; padding: 0.5em 1.5em; }
         #periods { margin-top: 2em; }
         table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid #ccc; padding: 0.5em; text-align: left; }
+        th, td {
+            border: none;
+            outline: none;
+            padding-top: 0;
+            padding-bottom: 0;
+            margin-top: 0;
+            margin-bottom: 0;
+            text-align: left;
+        }
         th { background: #f0f0f0; }
+        input[type="datetime-local"].endtime-input,
+        input[type="datetime-local"].starttime-input {
+            border: none;
+            outline: none;
+            background: transparent;
+        }
         .comment-input { width: 90%; }
     </style>
 </head>
@@ -171,21 +185,26 @@
         function addCompletedPeriodRow(p, index) {
             const tbody = document.getElementById('periodsBody');
             const tr = document.createElement('tr');
-            // Convert end time to local datetime-local string
+            // Convert start and end time to local datetime-local string
+            const startDate = new Date(p.start);
             const endDate = new Date(p.end);
-            const tzOffset = endDate.getTimezoneOffset() * 60000;
-            const localDateTime = new Date(endDate.getTime() - tzOffset).toISOString().slice(0,16); // "YYYY-MM-DDTHH:MM"
+            const tzOffsetStart = startDate.getTimezoneOffset() * 60000;
+            const tzOffsetEnd = endDate.getTimezoneOffset() * 60000;
+            const localStart = new Date(startDate.getTime() - tzOffsetStart).toISOString().slice(0,16);
+            const localEnd = new Date(endDate.getTime() - tzOffsetEnd).toISOString().slice(0,16);
             tr.innerHTML = `
-                <td>${new Date(p.start).toLocaleString()}</td>
                 <td>
-                    <input class="endtime-input" type="datetime-local" value="${localDateTime}" data-index="${index}" style="width:170px" />
+                    <input class="starttime-input" type="datetime-local" value="${localStart}" data-index="${index}" style="width:170px" />
+                </td>
+                <td>
+                    <input class="endtime-input" type="datetime-local" value="${localEnd}" data-index="${index}" style="width:170px" />
                 </td>
                 <td>${formatTime(p.end - p.start)}</td>
                 <td>
                     <input class="comment-input" type="text" value="${p.comment || ''}" data-index="${index}" autocomplete="off" />
                 </td>
             `;
-            tbody.appendChild(tr); // <-- Use appendChild to preserve order
+            tbody.appendChild(tr);
         }
 
         function savePeriods() {
