@@ -28,10 +28,15 @@
             background: #ffffff;
         }
         input[type="datetime-local"].endtime-input,
-        input[type="datetime-local"].starttime-input {
+        input[type="datetime-local"].starttime-input,
+        input[type="datetime-local"].endtime-input {
             border: none;
             outline: none;
             background: transparent;
+            width: 220px;
+            min-width: 180px;
+            max-width: 100%;
+            box-sizing: border-box;
         }
         .comment-input {
             width: 90%;
@@ -181,7 +186,7 @@ function addInProgressRow() {
     const localStart = new Date(startDate.getTime() - tzOffsetStart).toISOString().slice(0,16);
     tr.innerHTML = `
         <td style="vertical-align:top;">
-            <input class="starttime-input" type="datetime-local" value="${localStart}" disabled style="width:170px; display:block; margin-bottom:2px; opacity:0.7;" />
+            <input class="starttime-input" type="datetime-local" value="${localStart}" disabled style="width:220px; min-width:180px; max-width:100%; display:block; margin-bottom:2px; opacity:0.7; box-sizing:border-box;" />
             <div><em>In progress</em></div>
         </td>
         <td style="vertical-align:middle;" id="inProgressDurationCell"></td>
@@ -209,8 +214,8 @@ function addCompletedPeriodRow(p, index) {
     const localEnd = new Date(endDate.getTime() - tzOffsetEnd).toISOString().slice(0,16);
     tr.innerHTML = `
         <td style="vertical-align:top;">
-            <input class="starttime-input" type="datetime-local" value="${localStart}" data-index="${index}" style="width:170px; display:block; margin-bottom:2px;" />
-            <input class="endtime-input" type="datetime-local" value="${localEnd}" data-index="${index}" style="width:170px; display:block; margin-top:2px;" />
+            <input class="starttime-input" type="datetime-local" value="${localStart}" data-index="${index}" style="width:220px; min-width:180px; max-width:100%; display:block; margin-bottom:2px; box-sizing:border-box;" />
+            <input class="endtime-input" type="datetime-local" value="${localEnd}" data-index="${index}" style="width:220px; min-width:180px; max-width:100%; display:block; margin-top:2px; box-sizing:border-box;" />
         </td>
         <td style="vertical-align:middle;">${formatTime(p.end - p.start)}</td>
         <td style="vertical-align:middle;">
