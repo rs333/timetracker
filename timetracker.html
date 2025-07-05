@@ -20,13 +20,24 @@
             text-align: left;
         }
         th { background: #f0f0f0; }
+        /* Alternating row background for checkbook-style stripes */
+        #periodsBody tr:nth-child(even) {
+            background: #f7f7f7;
+        }
+        #periodsBody tr:nth-child(odd) {
+            background: #ffffff;
+        }
         input[type="datetime-local"].endtime-input,
         input[type="datetime-local"].starttime-input {
             border: none;
             outline: none;
             background: transparent;
         }
-        .comment-input { width: 90%; }
+        .comment-input {
+            width: 90%;
+            border: 1px solid #d3d3d3;
+            border-radius: 3px;
+        }
     </style>
 </head>
 <body>
@@ -59,8 +70,7 @@
         <table>
             <thead>
                 <tr>
-                    <th>Start Time</th>
-                    <th>End Time</th>
+                    <th>Start / End Time</th>
                     <th>Duration</th>
                     <th>Comment</th>
                 </tr>
@@ -143,7 +153,7 @@
             if (startTime) {
                 display += now - startTime;
                 // Update the in-progress row's duration if it exists
-                const inProgressDurationCell = document.querySelector('#inProgressRow > td:nth-child(3)');
+                const inProgressDurationCell = document.querySelector('#inProgressRow > td:nth-child(2)');
                 if (inProgressDurationCell) {
                     inProgressDurationCell.textContent = formatTime(now - startTime);
                 }
@@ -161,51 +171,54 @@
             }
         }
 
-        function addInProgressRow() {
-            const tbody = document.getElementById('periodsBody');
-            if (document.getElementById('inProgressRow')) return; // Already exists
-            const tr = document.createElement('tr');
-            tr.id = 'inProgressRow';
-            tr.innerHTML = `
-                <td>${new Date(startTime).toLocaleString()}</td>
-                <td><em>In progress</em></td>
-                <td>${formatTime(0)}</td>
-                <td>
-                    <input class="comment-input" type="text" id="inProgressComment" value="${window.inProgressComment || ''}" autocomplete="off" />
-                </td>
-            `;
-            tbody.insertBefore(tr, tbody.firstChild);
-        }
+function addInProgressRow() {
+    const tbody = document.getElementById('periodsBody');
+    if (document.getElementById('inProgressRow')) return; // Already exists
+    const tr = document.createElement('tr');
+    tr.id = 'inProgressRow';
+    const startDate = new Date(startTime);
+    const tzOffsetStart = startDate.getTimezoneOffset() * 60000;
+    const localStart = new Date(startDate.getTime() - tzOffsetStart).toISOString().slice(0,16);
+    tr.innerHTML = `
+        <td style="vertical-align:top;">
+            <input class="starttime-input" type="datetime-local" value="${localStart}" disabled style="width:170px; display:block; margin-bottom:2px; opacity:0.7;" />
+            <div><em>In progress</em></div>
+        </td>
+        <td style="vertical-align:middle;" id="inProgressDurationCell"></td>
+        <td style="vertical-align:middle;">
+            <input class="comment-input" type="text" id="inProgressComment" value="${window.inProgressComment || ''}" autocomplete="off" />
+        </td>
+    `;
+    tbody.insertBefore(tr, tbody.firstChild);
+}
 
         function removeInProgressRow() {
             const row = document.getElementById('inProgressRow');
             if (row) row.remove();
         }
 
-        function addCompletedPeriodRow(p, index) {
-            const tbody = document.getElementById('periodsBody');
-            const tr = document.createElement('tr');
-            // Convert start and end time to local datetime-local string
-            const startDate = new Date(p.start);
-            const endDate = new Date(p.end);
-            const tzOffsetStart = startDate.getTimezoneOffset() * 60000;
-            const tzOffsetEnd = endDate.getTimezoneOffset() * 60000;
-            const localStart = new Date(startDate.getTime() - tzOffsetStart).toISOString().slice(0,16);
-            const localEnd = new Date(endDate.getTime() - tzOffsetEnd).toISOString().slice(0,16);
-            tr.innerHTML = `
-                <td>
-                    <input class="starttime-input" type="datetime-local" value="${localStart}" data-index="${index}" style="width:170px" />
-                </td>
-                <td>
-                    <input class="endtime-input" type="datetime-local" value="${localEnd}" data-index="${index}" style="width:170px" />
-                </td>
-                <td>${formatTime(p.end - p.start)}</td>
-                <td>
-                    <input class="comment-input" type="text" value="${p.comment || ''}" data-index="${index}" autocomplete="off" />
-                </td>
-            `;
-            tbody.appendChild(tr);
-        }
+function addCompletedPeriodRow(p, index) {
+    const tbody = document.getElementById('periodsBody');
+    const tr = document.createElement('tr');
+    // Convert start and end time to local datetime-local string and pretty string
+    const startDate = new Date(p.start);
+    const endDate = new Date(p.end);
+    const tzOffsetStart = startDate.getTimezoneOffset() * 60000;
+    const tzOffsetEnd = endDate.getTimezoneOffset() * 60000;
+    const localStart = new Date(startDate.getTime() - tzOffsetStart).toISOString().slice(0,16);
+    const localEnd = new Date(endDate.getTime() - tzOffsetEnd).toISOString().slice(0,16);
+    tr.innerHTML = `
+        <td style="vertical-align:top;">
+            <input class="starttime-input" type="datetime-local" value="${localStart}" data-index="${index}" style="width:170px; display:block; margin-bottom:2px;" />
+            <input class="endtime-input" type="datetime-local" value="${localEnd}" data-index="${index}" style="width:170px; display:block; margin-top:2px;" />
+        </td>
+        <td style="vertical-align:middle;">${formatTime(p.end - p.start)}</td>
+        <td style="vertical-align:middle;">
+            <input class="comment-input" type="text" value="${p.comment || ''}" data-index="${index}" autocomplete="off" />
+        </td>
+    `;
+    tbody.appendChild(tr);
+}
 
         function savePeriods() {
             localStorage.setItem('workPeriods', JSON.stringify(periods));
@@ -529,6 +542,29 @@
                             alert('End time must be after start time.');
                             // Reset input to previous value
                             e.target.value = new Date(periods[idx].end).toISOString().slice(0,16);
+                        }
+                    }
+                }
+            }
+            // --- Handle start time editing ---
+            if (e.target.classList.contains('starttime-input')) {
+                const idx = e.target.getAttribute('data-index');
+                if (idx !== null && periods[idx]) {
+                    const newVal = e.target.value;
+                    const newStart = new Date(newVal);
+                    if (!isNaN(newStart.getTime())) {
+                        // Prevent setting start after end
+                        if (newStart.getTime() < periods[idx].end) {
+                            periods[idx].start = newStart.getTime();
+                            savePeriods();
+                            renderPeriods();
+                            if (timerInterval && startTime) {
+                                addInProgressRow();
+                            }
+                            renderSummaryChart(true);
+                        } else {
+                            alert('Start time must be before end time.');
+                            e.target.value = new Date(periods[idx].start).toISOString().slice(0,16);
                         }
                     }
                 }
