@@ -20,16 +20,10 @@
             text-align: left;
         }
         th { background: #f0f0f0; }
-        /* Alternating row background for checkbook-style stripes */
-        #periodsBody tr:nth-child(even) {
-            background: #f7f7f7;
-        }
-        #periodsBody tr:nth-child(odd) {
-            background: #ffffff;
-        }
+        #periodsBody tr:nth-child(even) { background: #f7f7f7; }
+        #periodsBody tr:nth-child(odd) { background: #ffffff; }
         input[type="datetime-local"].endtime-input,
-        input[type="datetime-local"].starttime-input,
-        input[type="datetime-local"].endtime-input {
+        input[type="datetime-local"].starttime-input {
             border: none;
             outline: none;
             background: transparent;
@@ -43,6 +37,30 @@
             border: 1px solid #d3d3d3;
             border-radius: 3px;
         }
+        .delete-btn {
+            background: none;
+            border: none;
+            color: #999;
+            cursor: pointer;
+            font-size: 1.1em;
+            padding: 2px 6px;
+        }
+        .delete-btn:hover { color: #e74c3c; }
+        .toast {
+            position: fixed;
+            bottom: 2em;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: #fff;
+            padding: 0.7em 1.5em;
+            border-radius: 5px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        .toast.visible { opacity: 1; }
     </style>
 </head>
 <body>
@@ -52,7 +70,7 @@
 
     <div id="summary">
         <h2>Summary</h2>
-        <label for="summaryRange">Show data for last 
+        <label for="summaryRange">Show data for last
             <select id="summaryRange">
                 <option value="7d">7 days</option>
                 <option value="30d">30 days</option>
@@ -78,6 +96,7 @@
                     <th>Start / End Time</th>
                     <th>Duration</th>
                     <th>Comment</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody id="periodsBody">
@@ -89,38 +108,52 @@
         <button id="importBtn">Import Data</button>
         <input type="file" id="importFileInput" style="display:none" accept="application/json" />
     </div>
+    <div id="toast" class="toast"></div>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
+        const TIMER_INTERVAL_MS = 500;
+        const STATE_SAVE_INTERVAL_MS = 5000;
+        const GRAPH_UPDATE_INTERVAL_MS = 60000;
+
         let timerInterval = null;
         let startTime = null;
-        let elapsed = 0;
         let periods = [];
         let barChart = null;
         let graphUpdateInterval = null;
         let stateSaveInterval = null;
         let lastGraphUpdate = 0;
+        let inProgressComment = '';
+
+        function showToast(msg, durationMs = 3000) {
+            const el = document.getElementById('toast');
+            el.textContent = msg;
+            el.classList.add('visible');
+            setTimeout(() => el.classList.remove('visible'), durationMs);
+        }
+
+        function toLocalDatetimeString(date) {
+            const d = date instanceof Date ? date : new Date(date);
+            const pad = n => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        }
+
+        function escapeAttr(str) {
+            return str.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
 
         function saveTimerState() {
             if (startTime) {
-                localStorage.setItem('timerInProgress', JSON.stringify({ startTime, elapsed }));
+                localStorage.setItem('timerInProgress', JSON.stringify({ startTime }));
             } else {
                 localStorage.removeItem('timerInProgress');
             }
         }
 
         function loadTimerState() {
-            // Always clear intervals and reset UI before loading new state
-            if (timerInterval) {
-                clearInterval(timerInterval);
-                timerInterval = null;
-            }
-            if (stateSaveInterval) {
-                clearInterval(stateSaveInterval);
-                stateSaveInterval = null;
-            }
+            if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+            if (stateSaveInterval) { clearInterval(stateSaveInterval); stateSaveInterval = null; }
             removeInProgressRow();
             startTime = null;
-            elapsed = 0;
             document.getElementById('toggleBtn').textContent = 'Start';
             document.getElementById('toggleBtn').style.background = '';
             document.getElementById('timer').textContent = '00:00:00';
@@ -131,10 +164,9 @@
                     const obj = JSON.parse(data);
                     if (obj && obj.startTime) {
                         startTime = obj.startTime;
-                        elapsed = obj.elapsed || 0;
-                        window.inProgressComment = localStorage.getItem('inProgressComment') || '';
-                        timerInterval = setInterval(updateTimerDisplay, 500);
-                        stateSaveInterval = setInterval(saveTimerState, 5000);
+                        inProgressComment = localStorage.getItem('inProgressComment') || '';
+                        timerInterval = setInterval(updateTimerDisplay, TIMER_INTERVAL_MS);
+                        stateSaveInterval = setInterval(saveTimerState, STATE_SAVE_INTERVAL_MS);
                         document.getElementById('toggleBtn').textContent = 'Stop';
                         document.getElementById('toggleBtn').style.background = '#e74c3c';
                         addInProgressRow();
@@ -153,77 +185,72 @@
         }
 
         function updateTimerDisplay() {
+            if (!startTime) return;
             const now = Date.now();
-            let display = elapsed;
-            if (startTime) {
-                display += now - startTime;
-                // Update the in-progress row's duration if it exists
-                const inProgressDurationCell = document.querySelector('#inProgressRow > td:nth-child(2)');
-                if (inProgressDurationCell) {
-                    inProgressDurationCell.textContent = formatTime(now - startTime);
-                }
-            }
+            const display = now - startTime;
             document.getElementById('timer').textContent = formatTime(display);
+            const inProgressDurationCell = document.querySelector('#inProgressRow > td:nth-child(2)');
+            if (inProgressDurationCell) {
+                inProgressDurationCell.textContent = formatTime(display);
+            }
         }
 
-        // Renders only the completed periods. Called once on load.
-        function renderPeriods() {
+        function renderTable() {
             const tbody = document.getElementById('periodsBody');
             tbody.innerHTML = '';
-            // Show all completed periods, most recent first
+            if (timerInterval && startTime) {
+                addInProgressRow();
+            }
             for (let i = periods.length - 1; i >= 0; i--) {
                 addCompletedPeriodRow(periods[i], i);
             }
         }
 
-function addInProgressRow() {
-    const tbody = document.getElementById('periodsBody');
-    if (document.getElementById('inProgressRow')) return; // Already exists
-    const tr = document.createElement('tr');
-    tr.id = 'inProgressRow';
-    const startDate = new Date(startTime);
-    const tzOffsetStart = startDate.getTimezoneOffset() * 60000;
-    const localStart = new Date(startDate.getTime() - tzOffsetStart).toISOString().slice(0,16);
-    tr.innerHTML = `
-        <td style="vertical-align:top;">
-            <input class="starttime-input" type="datetime-local" value="${localStart}" disabled style="width:220px; min-width:180px; max-width:100%; display:block; margin-bottom:2px; opacity:0.7; box-sizing:border-box;" />
-            <div><em>In progress</em></div>
-        </td>
-        <td style="vertical-align:middle;" id="inProgressDurationCell"></td>
-        <td style="vertical-align:middle;">
-            <input class="comment-input" type="text" id="inProgressComment" value="${window.inProgressComment || ''}" autocomplete="off" />
-        </td>
-    `;
-    tbody.insertBefore(tr, tbody.firstChild);
-}
+        function addInProgressRow() {
+            const tbody = document.getElementById('periodsBody');
+            if (document.getElementById('inProgressRow')) return;
+            const tr = document.createElement('tr');
+            tr.id = 'inProgressRow';
+            const localStart = toLocalDatetimeString(startTime);
+            tr.innerHTML = `
+                <td style="vertical-align:top;">
+                    <input class="starttime-input" type="datetime-local" value="${localStart}" disabled style="width:220px; min-width:180px; max-width:100%; display:block; margin-bottom:2px; opacity:0.7; box-sizing:border-box;" />
+                    <div><em>In progress</em></div>
+                </td>
+                <td style="vertical-align:middle;"></td>
+                <td style="vertical-align:middle;">
+                    <input class="comment-input" type="text" id="inProgressComment" value="${escapeAttr(inProgressComment)}" autocomplete="off" />
+                </td>
+                <td></td>
+            `;
+            tbody.insertBefore(tr, tbody.firstChild);
+        }
 
         function removeInProgressRow() {
             const row = document.getElementById('inProgressRow');
             if (row) row.remove();
         }
 
-function addCompletedPeriodRow(p, index) {
-    const tbody = document.getElementById('periodsBody');
-    const tr = document.createElement('tr');
-    // Convert start and end time to local datetime-local string and pretty string
-    const startDate = new Date(p.start);
-    const endDate = new Date(p.end);
-    const tzOffsetStart = startDate.getTimezoneOffset() * 60000;
-    const tzOffsetEnd = endDate.getTimezoneOffset() * 60000;
-    const localStart = new Date(startDate.getTime() - tzOffsetStart).toISOString().slice(0,16);
-    const localEnd = new Date(endDate.getTime() - tzOffsetEnd).toISOString().slice(0,16);
-    tr.innerHTML = `
-        <td style="vertical-align:top;">
-            <input class="starttime-input" type="datetime-local" value="${localStart}" data-index="${index}" style="width:220px; min-width:180px; max-width:100%; display:block; margin-bottom:2px; box-sizing:border-box;" />
-            <input class="endtime-input" type="datetime-local" value="${localEnd}" data-index="${index}" style="width:220px; min-width:180px; max-width:100%; display:block; margin-top:2px; box-sizing:border-box;" />
-        </td>
-        <td style="vertical-align:middle;">${formatTime(p.end - p.start)}</td>
-        <td style="vertical-align:middle;">
-            <input class="comment-input" type="text" value="${p.comment || ''}" data-index="${index}" autocomplete="off" />
-        </td>
-    `;
-    tbody.appendChild(tr);
-}
+        function addCompletedPeriodRow(p, index) {
+            const tbody = document.getElementById('periodsBody');
+            const tr = document.createElement('tr');
+            const localStart = toLocalDatetimeString(p.start);
+            const localEnd = toLocalDatetimeString(p.end);
+            tr.innerHTML = `
+                <td style="vertical-align:top;">
+                    <input class="starttime-input" type="datetime-local" value="${localStart}" data-index="${index}" style="width:220px; min-width:180px; max-width:100%; display:block; margin-bottom:2px; box-sizing:border-box;" />
+                    <input class="endtime-input" type="datetime-local" value="${localEnd}" data-index="${index}" style="width:220px; min-width:180px; max-width:100%; display:block; margin-top:2px; box-sizing:border-box;" />
+                </td>
+                <td style="vertical-align:middle;">${formatTime(p.end - p.start)}</td>
+                <td style="vertical-align:middle;">
+                    <input class="comment-input" type="text" value="${escapeAttr(p.comment || '')}" data-index="${index}" autocomplete="off" />
+                </td>
+                <td style="vertical-align:middle;">
+                    <button class="delete-btn" data-index="${index}" title="Delete">&times;</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        }
 
         function savePeriods() {
             localStorage.setItem('workPeriods', JSON.stringify(periods));
@@ -235,7 +262,6 @@ function addCompletedPeriodRow(p, index) {
                 try {
                     periods = JSON.parse(data);
                 } catch(e) {
-                    console.error("Error parsing periods from localStorage", e);
                     periods = [];
                 }
             }
@@ -243,16 +269,15 @@ function addCompletedPeriodRow(p, index) {
 
         function startTimer() {
             startTime = Date.now();
-            elapsed = 0;
-            window.inProgressComment = '';
+            inProgressComment = '';
             localStorage.removeItem('inProgressComment');
-            timerInterval = setInterval(updateTimerDisplay, 500);
-            stateSaveInterval = setInterval(saveTimerState, 5000);
+            timerInterval = setInterval(updateTimerDisplay, TIMER_INTERVAL_MS);
+            stateSaveInterval = setInterval(saveTimerState, STATE_SAVE_INTERVAL_MS);
             document.getElementById('toggleBtn').textContent = 'Stop';
             document.getElementById('toggleBtn').style.background = '#e74c3c';
             addInProgressRow();
             setGraphUpdateInterval();
-            saveTimerState(); // Save immediately
+            saveTimerState();
         }
 
         function stopTimer() {
@@ -262,24 +287,19 @@ function addCompletedPeriodRow(p, index) {
             stateSaveInterval = null;
 
             const endTime = Date.now();
-            const newPeriod = { start: startTime, end: endTime, comment: window.inProgressComment || '' };
-            periods.push(newPeriod);
+            periods.push({ start: startTime, end: endTime, comment: inProgressComment });
 
-            // Remove timer state BEFORE UI update so storage event fires and other tabs clear their intervals
             localStorage.removeItem('timerInProgress');
             localStorage.removeItem('inProgressComment');
             savePeriods();
 
-            removeInProgressRow();
-            renderPeriods();
-
-            elapsed = 0;
             startTime = null;
-            window.inProgressComment = '';
+            inProgressComment = '';
             document.getElementById('timer').textContent = '00:00:00';
             document.getElementById('toggleBtn').textContent = 'Start';
             document.getElementById('toggleBtn').style.background = '';
             if (graphUpdateInterval) clearInterval(graphUpdateInterval);
+            renderTable();
             renderSummaryChart(true);
         }
 
@@ -300,14 +320,11 @@ function addCompletedPeriodRow(p, index) {
         function getWeekStart(date) {
             const d = new Date(date);
             d.setHours(0,0,0,0);
-            // Set to Sunday
-            const day = d.getDay(); // 0 for Sunday, 1 for Monday, etc.
-            const diff = d.getDate() - day;
-            d.setDate(diff);
+            const day = d.getDay();
+            d.setDate(d.getDate() - day);
             return d;
         }
 
-        // Helper for month start
         function getMonthStart(date) {
             const d = new Date(date);
             d.setDate(1);
@@ -334,7 +351,7 @@ function addCompletedPeriodRow(p, index) {
                     prev.setMonth(prev.getMonth() - 1);
                     return getMonthStart(prev);
                 };
-            } else { // 'd'
+            } else {
                 periodMs = 24 * 60 * 60 * 1000;
                 getPeriodStart = getDayStart;
                 advancePeriod = d => new Date(d.getTime() - periodMs);
@@ -346,40 +363,39 @@ function addCompletedPeriodRow(p, index) {
                 if (unit === 'm') {
                     key = `${currentPeriodStart.getFullYear()}-${String(currentPeriodStart.getMonth() + 1).padStart(2, '0')}`;
                 } else {
-                    key = currentPeriodStart.toISOString().slice(0,10);
+                    key = toLocalDatetimeString(currentPeriodStart).slice(0,10);
                 }
                 labels.unshift(key);
                 dataMap[key] = 0;
                 currentPeriodStart = advancePeriod(currentPeriodStart);
             }
 
-            // Sum durations per period
             periods.forEach(p => {
                 if (!p.start || !p.end) return;
                 const start = new Date(p.start);
-                const end = new Date(p.end);
                 let periodKey;
                 if (unit === 'm') {
-                    periodKey = `${getMonthStart(start).getFullYear()}-${String(getMonthStart(start).getMonth() + 1).padStart(2, '0')}`;
+                    const ms = getMonthStart(start);
+                    periodKey = `${ms.getFullYear()}-${String(ms.getMonth() + 1).padStart(2, '0')}`;
                 } else {
-                    periodKey = getPeriodStart(start).toISOString().slice(0,10);
+                    periodKey = toLocalDatetimeString(getPeriodStart(start)).slice(0,10);
                 }
                 if (periodKey in dataMap) {
-                    dataMap[periodKey] += (end - start) / (1000 * 60 * 60); // hours
+                    dataMap[periodKey] += (p.end - p.start) / (1000 * 60 * 60);
                 }
             });
 
-            // Add in-progress period if any
             if (startTime) {
                 const nowTs = Date.now();
                 let periodKey;
                 if (unit === 'm') {
-                    periodKey = `${getMonthStart(new Date(startTime)).getFullYear()}-${String(getMonthStart(new Date(startTime)).getMonth() + 1).padStart(2, '0')}`;
+                    const ms = getMonthStart(new Date(startTime));
+                    periodKey = `${ms.getFullYear()}-${String(ms.getMonth() + 1).padStart(2, '0')}`;
                 } else {
-                    periodKey = getPeriodStart(new Date(startTime)).toISOString().slice(0,10);
+                    periodKey = toLocalDatetimeString(getPeriodStart(new Date(startTime))).slice(0,10);
                 }
                 if (periodKey in dataMap) {
-                    dataMap[periodKey] += (nowTs - startTime + (elapsed || 0)) / (1000 * 60 * 60); // hours
+                    dataMap[periodKey] += (nowTs - startTime) / (1000 * 60 * 60);
                 }
             }
 
@@ -387,9 +403,9 @@ function addCompletedPeriodRow(p, index) {
         }
 
         function renderSummaryChart(force = false) {
-            // Only update if at least 1 minute has passed or force is true
+            if (typeof Chart === 'undefined') return;
             const now = Date.now();
-            if (!force && timerInterval && now - lastGraphUpdate < 60000) return;
+            if (!force && timerInterval && now - lastGraphUpdate < GRAPH_UPDATE_INTERVAL_MS) return;
             lastGraphUpdate = now;
 
             const range = document.getElementById('summaryRange').value;
@@ -397,13 +413,9 @@ function addCompletedPeriodRow(p, index) {
             const labels = summary.map(s => s.label);
             const data = summary.map(s => s.hours.toFixed(2));
             let xLabel;
-            if (range.slice(-1) === 'w') {
-                xLabel = 'Week Starting';
-            } else if (range.slice(-1) === 'm') {
-                xLabel = 'Month';
-            } else {
-                xLabel = 'Date';
-            }
+            if (range.slice(-1) === 'w') xLabel = 'Week Starting';
+            else if (range.slice(-1) === 'm') xLabel = 'Month';
+            else xLabel = 'Date';
 
             if (barChart) {
                 barChart.data.labels = labels;
@@ -438,12 +450,10 @@ function addCompletedPeriodRow(p, index) {
         function setGraphUpdateInterval() {
             if (graphUpdateInterval) clearInterval(graphUpdateInterval);
             if (timerInterval) {
-                // Update graph every minute while timer is running
-                graphUpdateInterval = setInterval(() => renderSummaryChart(), 60000);
+                graphUpdateInterval = setInterval(() => renderSummaryChart(), GRAPH_UPDATE_INTERVAL_MS);
             }
         }
 
-        // --- Export/Import logic ---
         function exportData() {
             const data = {
                 workPeriods: periods,
@@ -468,10 +478,13 @@ function addCompletedPeriodRow(p, index) {
             reader.onload = function(e) {
                 try {
                     const data = JSON.parse(e.target.result);
-                    if (Array.isArray(data.workPeriods)) {
-                        periods = data.workPeriods;
-                        localStorage.setItem('workPeriods', JSON.stringify(periods));
+                    if (!Array.isArray(data.workPeriods)) {
+                        showToast('Invalid data: missing workPeriods array');
+                        return;
                     }
+                    if (!confirm('This will replace all existing data. Continue?')) return;
+                    periods = data.workPeriods;
+                    localStorage.setItem('workPeriods', JSON.stringify(periods));
                     if (data.timerInProgress) {
                         localStorage.setItem('timerInProgress', data.timerInProgress);
                     } else {
@@ -484,11 +497,11 @@ function addCompletedPeriodRow(p, index) {
                     }
                     loadPeriods();
                     loadTimerState();
-                    renderPeriods(); // Re-render table with imported data
-                    // The functions above will trigger renders as needed
-                    alert('Data imported successfully.');
+                    renderTable();
+                    renderSummaryChart(true);
+                    showToast('Data imported successfully.');
                 } catch (err) {
-                    alert('Failed to import data: ' + err);
+                    showToast('Failed to import data: ' + err.message);
                 }
             };
             reader.readAsText(file);
@@ -505,106 +518,88 @@ function addCompletedPeriodRow(p, index) {
             }
         });
 
-        // Use event delegation for comment inputs for performance
+        // Unified event delegation for the periods table
         document.getElementById('periodsBody').addEventListener('input', (e) => {
             if (e.target.classList.contains('comment-input')) {
                 if (e.target.id === 'inProgressComment') {
-                    window.inProgressComment = e.target.value;
-                    localStorage.setItem('inProgressComment', window.inProgressComment);
+                    inProgressComment = e.target.value;
+                    localStorage.setItem('inProgressComment', inProgressComment);
                 } else {
                     const idx = e.target.getAttribute('data-index');
                     if (idx !== null) periods[idx].comment = e.target.value;
                 }
             }
         });
+
         document.getElementById('periodsBody').addEventListener('change', (e) => {
             if (e.target.classList.contains('comment-input')) {
                 const idx = e.target.getAttribute('data-index');
                 if (idx !== null) savePeriods();
-            }
-        });
-
-        // Event delegation for end time/date editing
-        document.getElementById('periodsBody').addEventListener('change', (e) => {
-            if (e.target.classList.contains('endtime-input')) {
+            } else if (e.target.classList.contains('endtime-input')) {
                 const idx = e.target.getAttribute('data-index');
                 if (idx !== null && periods[idx]) {
-                    const newVal = e.target.value;
-                    // Convert "YYYY-MM-DDTHH:MM" to timestamp
-                    const newEnd = new Date(newVal);
+                    const newEnd = new Date(e.target.value);
                     if (!isNaN(newEnd.getTime())) {
-                        // Prevent setting end before start
                         if (newEnd.getTime() > periods[idx].start) {
                             periods[idx].end = newEnd.getTime();
                             savePeriods();
-                            renderPeriods();
-                            // Restore in-progress row if timer is running
-                            if (timerInterval && startTime) {
-                                addInProgressRow();
-                            }
+                            renderTable();
                             renderSummaryChart(true);
                         } else {
-                            alert('End time must be after start time.');
-                            // Reset input to previous value
-                            e.target.value = new Date(periods[idx].end).toISOString().slice(0,16);
+                            showToast('End time must be after start time.');
+                            e.target.value = toLocalDatetimeString(periods[idx].end);
+                        }
+                    }
+                }
+            } else if (e.target.classList.contains('starttime-input')) {
+                const idx = e.target.getAttribute('data-index');
+                if (idx !== null && periods[idx]) {
+                    const newStart = new Date(e.target.value);
+                    if (!isNaN(newStart.getTime())) {
+                        if (newStart.getTime() < periods[idx].end) {
+                            periods[idx].start = newStart.getTime();
+                            savePeriods();
+                            renderTable();
+                            renderSummaryChart(true);
+                        } else {
+                            showToast('Start time must be before end time.');
+                            e.target.value = toLocalDatetimeString(periods[idx].start);
                         }
                     }
                 }
             }
-            // --- Handle start time editing ---
-            if (e.target.classList.contains('starttime-input')) {
-                const idx = e.target.getAttribute('data-index');
-                if (idx !== null && periods[idx]) {
-                    const newVal = e.target.value;
-                    const newStart = new Date(newVal);
-                    if (!isNaN(newStart.getTime())) {
-                        // Prevent setting start after end
-                        if (newStart.getTime() < periods[idx].end) {
-                            periods[idx].start = newStart.getTime();
-                            savePeriods();
-                            renderPeriods();
-                            if (timerInterval && startTime) {
-                                addInProgressRow();
-                            }
-                            renderSummaryChart(true);
-                        } else {
-                            alert('Start time must be before end time.');
-                            e.target.value = new Date(periods[idx].start).toISOString().slice(0,16);
-                        }
-                    }
+        });
+
+        // Delete button handler
+        document.getElementById('periodsBody').addEventListener('click', (e) => {
+            if (e.target.classList.contains('delete-btn')) {
+                const idx = parseInt(e.target.getAttribute('data-index'), 10);
+                if (!isNaN(idx) && periods[idx]) {
+                    if (!confirm('Delete this work period?')) return;
+                    periods.splice(idx, 1);
+                    savePeriods();
+                    renderTable();
+                    renderSummaryChart(true);
                 }
             }
         });
 
         // Initialize
         loadPeriods();
-        renderPeriods();
+        renderTable();
         loadTimerState();
         updateTimerDisplay();
         window.addEventListener('DOMContentLoaded', () => renderSummaryChart(true));
 
-        // Synchronize data across tabs in real time
+        // Synchronize across tabs
         window.addEventListener('storage', function(e) {
-            if (
-                e.key === 'workPeriods' ||
-                e.key === 'timerInProgress' ||
-                e.key === 'inProgressComment'
-            ) {
-                // Always clear any running intervals/state before reloading
-                if (timerInterval) {
-                    clearInterval(timerInterval);
-                    timerInterval = null;
-                }
-                if (stateSaveInterval) {
-                    clearInterval(stateSaveInterval);
-                    stateSaveInterval = null;
-                }
-                // Remove in-progress row if present
+            if (e.key === 'workPeriods' || e.key === 'timerInProgress' || e.key === 'inProgressComment') {
+                if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+                if (stateSaveInterval) { clearInterval(stateSaveInterval); stateSaveInterval = null; }
                 removeInProgressRow();
-                // Reload all state and UI
                 loadPeriods();
-                renderPeriods();
                 loadTimerState();
+                renderTable();
                 updateTimerDisplay();
                 renderSummaryChart(true);
             }
